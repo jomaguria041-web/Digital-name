@@ -1,0 +1,150 @@
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import math, os
+
+W, H = 1200, 1200  # canvas size
+OUT_FILENAME = "CSCOMSCIE3_3B_GuriaJoma_Activity1.png"
+
+# ------------------------------
+# Helpers
+# ------------------------------
+def load_font(size):
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "C:\\Windows\\Fonts\\arialbd.ttf",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size=size)
+    return ImageFont.load_default()
+
+# Draw text along an arc
+def draw_text_on_arc(base_img, center, radius, text, font, start_angle, end_angle, fill):
+    cx, cy = center
+    angle_range = math.radians(end_angle - start_angle)
+
+    # measure text width
+    text_width = sum(font.getlength(c) for c in text)
+    radians_per_px = angle_range / text_width
+
+    current_angle = math.radians(start_angle)
+    for char in text:
+        w = font.getlength(char)
+        char_angle = current_angle + w * radians_per_px / 2
+
+        # position
+        x = cx + math.cos(char_angle) * radius
+        y = cy + math.sin(char_angle) * radius
+
+        # draw rotated char
+        glyph = Image.new("RGBA", (250,250), (0,0,0,0))
+        gdraw = ImageDraw.Draw(glyph)
+        gdraw.text((125,125), char, font=font, fill=fill, anchor="mm")
+
+        rotated = glyph.rotate(-math.degrees(char_angle)+90, resample=Image.Resampling.BICUBIC)
+        base_img.alpha_composite(rotated, (int(x-125), int(y-125)))
+
+        current_angle += w * radians_per_px
+
+# ------------------------------
+# Base medal canvas (PURPLE background)
+# ------------------------------
+img = Image.new("RGBA", (W,H), (120,0,140,255))  # solid purple background
+draw = ImageDraw.Draw(img)
+
+cx, cy = W//2, H//2 - 80
+outer_r = 400   # bigger medal
+inner_r = 300
+
+# shadow
+shadow = Image.new("RGBA", img.size, (0,0,0,0))
+sd = ImageDraw.Draw(shadow)
+sd.ellipse((cx-outer_r+12, cy-outer_r+20, cx+outer_r+12, cy+outer_r+20), fill=(0,0,0,140))
+shadow = shadow.filter(ImageFilter.GaussianBlur(14))
+img = Image.alpha_composite(img, shadow)
+
+draw = ImageDraw.Draw(img)
+
+# gold gradient medal
+for i in range(outer_r, 0, -1):
+    frac = i/outer_r
+    r = int(205 + (255-205)*(1-frac)**1.5)
+    g = int(155 + (220-155)*(1-frac)**1.3)
+    b = int(35 + (90-35)*(1-frac)*0.6)
+    draw.ellipse((cx-i, cy-i, cx+i, cy+i), fill=(r,g,b))
+
+# star in the center
+def draw_star(draw_obj, cx, cy, r, fill):
+    pts = []
+    spikes = 5
+    for i in range(spikes*2):
+        angle = i * math.pi / spikes - math.pi/2
+        rad = r if i%2==0 else r*0.45
+        x = cx + math.cos(angle)*rad
+        y = cy + math.sin(angle)*rad
+        pts.append((x,y))
+    draw_obj.polygon(pts, fill=fill)
+
+draw_star(draw, cx, cy-10, 120, (255,245,190))
+
+# ------------------------------
+# Laurel wreath
+# ------------------------------
+def draw_leaf(center_x, center_y, angle_deg, dist, scale=1.0, side=1):
+    angle = math.radians(angle_deg)
+    lx = center_x + math.cos(angle)*dist*side
+    ly = center_y + math.sin(angle)*dist
+    w = 32*scale
+    h = 12*scale
+    bbox = [lx - w, ly - h, lx + w, ly + h]
+    leaf = Image.new("RGBA", img.size, (0,0,0,0))
+    ld = ImageDraw.Draw(leaf)
+    ld.ellipse(bbox, fill=(30,120,60,220))
+    leaf = leaf.rotate(-angle_deg, center=(center_x,center_y), resample=Image.Resampling.BICUBIC)
+    return leaf
+
+wreath = Image.new("RGBA", img.size, (0,0,0,0))
+for deg in range(40, 140, 7):
+    wreath = Image.alpha_composite(wreath, draw_leaf(cx, cy, deg, outer_r-40, scale=1.1, side=-1))
+for deg in range(40, 140, 7):
+    wreath = Image.alpha_composite(wreath, draw_leaf(cx, cy, deg, outer_r-40, scale=1.1, side=1))
+wreath = wreath.filter(ImageFilter.GaussianBlur(0.6))
+img = Image.alpha_composite(img, wreath)
+
+# ------------------------------
+# Ribbons
+# ------------------------------
+ribbon_h = 300
+ribbon_w = 600
+lr = Image.new("RGBA", img.size, (0,0,0,0))
+ldr = ImageDraw.Draw(lr)
+ldx = cx - ribbon_w//2 - 30
+ldy = cy + outer_r - 40
+ldr.polygon([(ldx, ldy),(ldx + ribbon_w//2, ldy - 30),(ldx + ribbon_w//2 + 40, ldy + ribbon_h//2),(ldx, ldy + ribbon_h)], fill=(200,30,60,255))
+rr = Image.new("RGBA", img.size, (0,0,0,0))
+rdr = ImageDraw.Draw(rr)
+rdx = cx + ribbon_w//2 + 30
+rdy = cy + outer_r - 40
+rdr.polygon([(rdx, rdy),(rdx - ribbon_w//2, rdy - 30),(rdx - ribbon_w//2 - 40, rdy + ribbon_h//2),(rdx, rdy + ribbon_h)], fill=(200,30,60,255))
+ribbons = Image.alpha_composite(lr, rr).filter(ImageFilter.GaussianBlur(0.5))
+img = Image.alpha_composite(img, ribbons)
+
+# ------------------------------
+# Circular Text (aligned arcs)
+# ------------------------------
+font = load_font(70)
+
+# top arc text (centered above)
+draw_text_on_arc(img, (cx, cy), outer_r-90, "BEST CHEER SQUAD", font, 160, 30, fill=(40,30,20))
+
+# bottom arc text (mirrored below)
+draw_text_on_arc(img, (cx, cy), outer_r-60, "PAUGNAT & PASUNDAYAG ", font, -20, -160, fill=(40,30,20))
+
+# ------------------------------
+# Show
+# ------------------------------
+img.show()
+
+# ------------------------------
+# Save
+#-------------------------------
+img.save()
